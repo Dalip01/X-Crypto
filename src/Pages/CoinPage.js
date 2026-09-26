@@ -15,9 +15,13 @@ const CoinPage = () => {
   const { currency, symbol } = CryptoState();
 
   const fetchCoin = async () => {
-    const { data } = await axios.get(SingleCoin(id));
-
-    setCoin(data);
+    try {
+      const { data } = await axios.get(SingleCoin(id));
+      setCoin(data || null);
+    } catch (error) {
+      console.error("Failed to load coin details:", error);
+      setCoin(null);
+    }
   };
 
   useEffect(() => {
@@ -80,11 +84,20 @@ const CoinPage = () => {
 
   if (!coin) return <LinearProgress style={{ backgroundColor: "gold" }} />;
 
+  const description = coin?.description?.en || "No description available.";
+  const marketRank = Number(coin?.market_cap_rank ?? 0);
+  const currentPrice = Number(
+    coin?.market_data?.current_price?.[currency.toLowerCase()] ?? 0,
+  );
+  const marketCap = Number(
+    coin?.market_data?.market_cap?.[currency.toLowerCase()] ?? 0,
+  );
+
   return (
     <div className={classes.container}>
       <div className={classes.sidebar}>
         <img
-          src={coin?.image.large}
+          src={coin?.image?.large || coin?.image?.thumb}
           alt={coin?.name}
           height="200"
           style={{ marginBottom: 20 }}
@@ -93,7 +106,7 @@ const CoinPage = () => {
           {coin?.name}
         </Typography>
         <Typography variant="subtitle1" className={classes.description}>
-          {ReactHtmlParser(coin?.description.en.split(". ")[0])}.
+          {ReactHtmlParser(description.split(". ")[0])}.
         </Typography>
         <div className={classes.marketData}>
           <span style={{ display: "flex" }}>
@@ -107,7 +120,7 @@ const CoinPage = () => {
                 fontFamily: "Montserrat",
               }}
             >
-              {numberWithCommas(coin?.market_cap_rank)}
+              {numberWithCommas(marketRank)}
             </Typography>
           </span>
 
@@ -122,10 +135,7 @@ const CoinPage = () => {
                 fontFamily: "Montserrat",
               }}
             >
-              {symbol}{" "}
-              {numberWithCommas(
-                coin?.market_data.current_price[currency.toLowerCase()]
-              )}
+              {symbol} {numberWithCommas(currentPrice.toFixed(2))}
             </Typography>
           </span>
           <span style={{ display: "flex" }}>
@@ -139,13 +149,7 @@ const CoinPage = () => {
                 fontFamily: "Montserrat",
               }}
             >
-              {symbol}{" "}
-              {numberWithCommas(
-                coin?.market_data.market_cap[currency.toLowerCase()]
-                  .toString()
-                  .slice(0, -6)
-              )}
-              M
+              {symbol} {numberWithCommas((marketCap / 1000000).toFixed(0))}M
             </Typography>
           </span>
         </div>

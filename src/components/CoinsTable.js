@@ -22,8 +22,16 @@ import { useHistory } from "react-router-dom";
 import { CryptoState } from "../CryptoContext";
 
 export function numberWithCommas(x) {
-  return x.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  const value = Number(x ?? 0);
+  return Number.isFinite(value)
+    ? value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",")
+    : "0";
 }
+
+const safeNumber = (value, fallback = 0) => {
+  const numericValue = Number(value ?? fallback);
+  return Number.isFinite(numericValue) ? numericValue : fallback;
+};
 
 export default function CoinsTable() {
   const [coins, setCoins] = useState([]);
@@ -63,11 +71,16 @@ export default function CoinsTable() {
 
   const fetchCoins = async () => {
     setLoading(true);
-    const { data } = await axios.get(CoinList(currency));
-    console.log(data);
 
-    setCoins(data);
-    setLoading(false);
+    try {
+      const { data } = await axios.get(CoinList(currency));
+      setCoins(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error("Failed to load coins:", error);
+      setCoins([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -76,10 +89,16 @@ export default function CoinsTable() {
   }, [currency]);
 
   const handleSearch = () => {
+    const normalizedSearch = search.trim().toLowerCase();
+
+    if (!normalizedSearch) {
+      return coins;
+    }
+
     return coins.filter(
       (coin) =>
-        coin.name.toLowerCase().includes(search) ||
-        coin.symbol.toLowerCase().includes(search)
+        coin.name.toLowerCase().includes(normalizedSearch) ||
+        coin.symbol.toLowerCase().includes(normalizedSearch),
     );
   };
 
@@ -113,7 +132,7 @@ export default function CoinsTable() {
                         fontFamily: "Montserrat",
                       }}
                       key={head}
-                      align={head === "Coin" ? "" : "right"}
+                      align={head === "Coin" ? "left" : "right"}
                     >
                       {head}
                     </TableCell>
@@ -122,70 +141,89 @@ export default function CoinsTable() {
               </TableHead>
 
               <TableBody>
-                {handleSearch()
-                  .slice((page - 1) * 10, (page - 1) * 10 + 10)
-                  .map((row) => {
-                    const profit = row.price_change_percentage_24h > 0;
-                    return (
-                      <TableRow
-                        onClick={() => history.push(`/coins/${row.id}`)}
-                        className={classes.row}
-                        key={row.name}
-                      >
-                        <TableCell
-                          component="th"
-                          scope="row"
-                          style={{
-                            display: "flex",
-                            gap: 15,
-                          }}
+                {handleSearch().length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={4}
+                      align="center"
+                      style={{ color: "#ccc" }}
+                    >
+                      No cryptocurrencies found.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  handleSearch()
+                    .slice((page - 1) * 10, (page - 1) * 10 + 10)
+                    .map((row) => {
+                      const price = safeNumber(row?.current_price, 0);
+                      const change = safeNumber(
+                        row?.price_change_percentage_24h,
+                        0,
+                      );
+                      const marketCap = safeNumber(row?.market_cap, 0);
+                      const profit = change > 0;
+
+                      return (
+                        <TableRow
+                          onClick={() => history.push(`/coins/${row.id}`)}
+                          className={classes.row}
+                          key={row.id || row.name}
                         >
-                          <img
-                            src={row?.image}
-                            alt={row.name}
-                            height="50"
-                            style={{ marginBottom: 10 }}
-                          />
-                          <div
-                            style={{ display: "flex", flexDirection: "column" }}
+                          <TableCell
+                            component="th"
+                            scope="row"
+                            style={{
+                              display: "flex",
+                              gap: 15,
+                            }}
                           >
-                            <span
+                            <img
+                              src={row?.image || ""}
+                              alt={row?.name || "Coin"}
+                              height="50"
+                              style={{ marginBottom: 10 }}
+                            />
+                            <div
                               style={{
-                                textTransform: "uppercase",
-                                fontSize: 22,
+                                display: "flex",
+                                flexDirection: "column",
                               }}
                             >
-                              {row.symbol}
-                            </span>
-                            <span style={{ color: "darkgrey" }}>
-                              {row.name}
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell align="right">
-                          {symbol}{" "}
-                          {numberWithCommas(row.current_price.toFixed(2))}
-                        </TableCell>
-                        <TableCell
-                          align="right"
-                          style={{
-                            color: profit > 0 ? "rgb(14, 203, 129)" : "red",
-                            fontWeight: 500,
-                          }}
-                        >
-                          {profit && "+"}
-                          {row.price_change_percentage_24h.toFixed(2)}%
-                        </TableCell>
-                        <TableCell align="right">
-                          {symbol}{" "}
-                          {numberWithCommas(
-                            row.market_cap.toString().slice(0, -6)
-                          )}
-                          M
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
+                              <span
+                                style={{
+                                  textTransform: "uppercase",
+                                  fontSize: 22,
+                                }}
+                              >
+                                {row?.symbol || "N/A"}
+                              </span>
+                              <span style={{ color: "darkgrey" }}>
+                                {row?.name || "Unknown coin"}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell align="right">
+                            {symbol} {numberWithCommas(price.toFixed(2))}
+                          </TableCell>
+                          <TableCell
+                            align="right"
+                            style={{
+                              color: profit ? "rgb(14, 203, 129)" : "red",
+                              fontWeight: 500,
+                            }}
+                          >
+                            {profit && "+"}
+                            {change.toFixed(2)}%
+                          </TableCell>
+                          <TableCell align="right">
+                            {symbol}{" "}
+                            {numberWithCommas((marketCap / 1000000).toFixed(0))}
+                            M
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                )}
               </TableBody>
             </Table>
           )}
@@ -193,7 +231,7 @@ export default function CoinsTable() {
 
         {/* Comes from @material-ui/lab */}
         <Pagination
-          count={(handleSearch()?.length / 10).toFixed(0)}
+          count={Math.ceil(handleSearch().length / 10)}
           style={{
             padding: 20,
             width: "100%",
